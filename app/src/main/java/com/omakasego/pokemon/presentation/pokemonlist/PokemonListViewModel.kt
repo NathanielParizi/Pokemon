@@ -11,13 +11,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class PokemonListViewModel(
-    private val getPokemonPageUseCase: GetPokemonPageUseCase
+    private val getPokemonPageUseCase: GetPokemonPageUseCase,
+    private val paginationStrategy: PaginationStrategy
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PokemonListUiState())
     val uiState: StateFlow<PokemonListUiState> = _uiState.asStateFlow()
 
-    private val pageSize = 30
     private var totalCount: Int = Int.MAX_VALUE
 
     init {
@@ -51,7 +51,10 @@ class PokemonListViewModel(
             }
 
             runCatching {
-                getPokemonPageUseCase(offset = uiState.value.items.size, limit = pageSize)
+                getPokemonPageUseCase(
+                    offset = paginationStrategy.nextOffset(uiState.value.items.size),
+                    limit = paginationStrategy.pageSize()
+                )
             }.onSuccess { page ->
                 totalCount = page.totalCount
                 _uiState.update { oldState ->
@@ -77,12 +80,13 @@ class PokemonListViewModel(
 
     companion object {
         fun provideFactory(
-            getPokemonPageUseCase: GetPokemonPageUseCase
+            getPokemonPageUseCase: GetPokemonPageUseCase,
+            paginationStrategy: PaginationStrategy
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 if (modelClass.isAssignableFrom(PokemonListViewModel::class.java)) {
-                    return PokemonListViewModel(getPokemonPageUseCase) as T
+                    return PokemonListViewModel(getPokemonPageUseCase, paginationStrategy) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
             }

@@ -31,7 +31,8 @@ import kotlinx.coroutines.flow.map
 
 @Composable
 fun PokemonListScreen(
-    viewModel: PokemonListViewModel
+    viewModel: PokemonListViewModel,
+    paginationStrategy: PaginationStrategy
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val errorMessage = uiState.errorMessage
@@ -42,8 +43,13 @@ fun PokemonListScreen(
             val layoutInfo = listState.layoutInfo
             val totalItemsCount = layoutInfo.totalItemsCount
             val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            totalItemsCount > 0 && lastVisibleItem >= totalItemsCount - 5
-        }.map { isNearEnd -> isNearEnd && !uiState.hasReachedEnd }
+            paginationStrategy.shouldLoadNextPage(
+                lastVisibleItemIndex = lastVisibleItem,
+                totalItemsCount = totalItemsCount,
+                isLoading = uiState.isLoadingMore || uiState.isLoadingInitial,
+                hasReachedEnd = uiState.hasReachedEnd
+            )
+        }.map { shouldLoad -> shouldLoad && !uiState.hasReachedEnd }
             .distinctUntilChanged()
             .filter { it }
             .collect {
