@@ -3,90 +3,39 @@ package com.omakasego.pokemon.presentation.pokemonlist
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.omakasego.pokemon.domain.usecase.GetPokemonPageUseCase
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import com.omakasego.pokemon.domain.model.Pokemon
+import com.omakasego.pokemon.domain.usecase.GetPokemonPagingDataUseCase
+import kotlinx.coroutines.flow.Flow
 
 class PokemonListViewModel(
-    private val getPokemonPageUseCase: GetPokemonPageUseCase,
-    private val paginationStrategy: PaginationStrategy
+    getPokemonPagingDataUseCase: GetPokemonPagingDataUseCase
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(PokemonListUiState())
-    val uiState: StateFlow<PokemonListUiState> = _uiState.asStateFlow()
-
-    private var totalCount: Int = Int.MAX_VALUE
-
-    init {
-        loadNextPage()
-    }
-
-    fun retry() {
-        if (uiState.value.items.isEmpty()) {
-            _uiState.update { it.copy(isLoadingInitial = true, errorMessage = null) }
-        }
-        loadNextPage()
-    }
-
-    fun loadNextPage() {
-        val currentState = uiState.value
-        if (
-            currentState.isLoadingInitial ||
-            currentState.isLoadingMore ||
-            currentState.hasReachedEnd
-        ) {
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    isLoadingInitial = it.items.isEmpty(),
-                    isLoadingMore = it.items.isNotEmpty(),
-                    errorMessage = null
-                )
-            }
-
-            runCatching {
-                getPokemonPageUseCase(
-                    offset = paginationStrategy.nextOffset(uiState.value.items.size),
-                    limit = paginationStrategy.pageSize()
-                )
-            }.onSuccess { page ->
-                totalCount = page.totalCount
-                _uiState.update { oldState ->
-                    val newItems = oldState.items + page.items
-                    oldState.copy(
-                        items = newItems,
-                        isLoadingInitial = false,
-                        isLoadingMore = false,
-                        hasReachedEnd = newItems.size >= totalCount
-                    )
-                }
-            }.onFailure {
-                _uiState.update { oldState ->
-                    oldState.copy(
-                        isLoadingInitial = false,
-                        isLoadingMore = false,
-                        errorMessage = "Could not load Pokemon. Please try again."
-                    )
-                }
-            }
-        }
-    }
+    // Strategy-based manual pagination was replaced by Paging 3.
+    // If needed later, the strategy-driven state/loading methods can be restored.
+    val pokemonPagingData: Flow<PagingData<Pokemon>> =
+        getPokemonPagingDataUseCase(
+            pageSize = PAGE_SIZE,
+            prefetchDistance = PREFETCH_DISTANCE,
+            maxSize = MAX_SIZE
+        ).cachedIn(viewModelScope)
 
     companion object {
+        // Conservative loading strategy for clearer paging behavior.
+        // Small page size + low prefetch + bounded max size limits total loaded data.
+        private const val PAGE_SIZE = 10
+        private const val PREFETCH_DISTANCE = 2
+        private const val MAX_SIZE = 30
+
         fun provideFactory(
-            getPokemonPageUseCase: GetPokemonPageUseCase,
-            paginationStrategy: PaginationStrategy
+            getPokemonPagingDataUseCase: GetPokemonPagingDataUseCase
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 if (modelClass.isAssignableFrom(PokemonListViewModel::class.java)) {
-                    return PokemonListViewModel(getPokemonPageUseCase, paginationStrategy) as T
+                    return PokemonListViewModel(getPokemonPagingDataUseCase) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
             }
